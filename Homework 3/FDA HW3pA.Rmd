@@ -1,0 +1,89 @@
+---
+title: "FDA HW3"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+# ============================================================
+# GM weekly log-returns ~ Toyota + Ford
+# ============================================================
+
+dat <- read.table("w_logret_3automanu.txt", header = TRUE, sep = "\t",
+                  stringsAsFactors = FALSE)
+dat$Date <- as.Date(dat$Date, format = "%m/%d/%Y")
+
+cat("=== Data summary ===\n")
+str(dat)
+print(summary(dat[, c("Toyota","Ford","GM")]))
+cat("\nN obs:", nrow(dat), "\n\n")
+
+# ---- Fit model ----
+fit <- lm(GM ~ Toyota + Ford, data = dat)
+
+cat("\n=== Model summary ===\n")
+print(summary(fit))
+
+cat("\n=== ANOVA ===\n")
+print(anova(fit))
+
+cat("\n=== Confidence intervals (95%) ===\n")
+print(confint(fit))
+
+# ---- Diagnostics ----
+cat("\n=== VIF (multicollinearity) ===\n")
+# manual VIF (avoid needing 'car' package)
+vif_manual <- function(model) {
+  mm <- model.matrix(model)[, -1, drop = FALSE]
+  vifs <- sapply(colnames(mm), function(cn) {
+    others <- setdiff(colnames(mm), cn)
+    r2 <- summary(lm(mm[, cn] ~ mm[, others]))$r.squared
+    1 / (1 - r2)
+  })
+  vifs
+}
+print(vif_manual(fit))
+
+cat("\n=== Durbin-Watson (autocorrelation) - manual calc ===\n")
+res <- resid(fit)
+dw <- sum(diff(res)^2) / sum(res^2)
+cat("DW statistic:", round(dw, 4), "(2 = no autocorrelation)\n")
+
+cat("\n=== Breusch-Pagan test (heteroskedasticity) - manual ===\n")
+bp_aux <- lm(res^2 ~ dat$Toyota + dat$Ford)
+bp_stat <- nrow(dat) * summary(bp_aux)$r.squared
+bp_p <- 1 - pchisq(bp_stat, df = 2)
+cat("BP statistic:", round(bp_stat,4), " p-value:", round(bp_p,4), "\n")
+
+cat("\n=== Shapiro-Wilk normality test on residuals ===\n")
+print(shapiro.test(res))
+
+cat("\n=== Influential points (Cook's distance > 4/n) ===\n")
+cooksd <- cooks.distance(fit)
+thresh <- 4 / nrow(dat)
+infl_idx <- which(cooksd > thresh)
+cat("Number flagged:", length(infl_idx), "out of", nrow(dat), "\n")
+print(head(dat[infl_idx, c("Date","Toyota","Ford","GM")][order(-cooksd[infl_idx]),], 10))
+
+# ---- Save diagnostic plots ----
+png("diagnostics.png", width = 1000, height = 1000, res =120)
+par(mfrow = c(2,2))
+plot(fit)
+dev.off()
+
+png("scatter.png", width = 1100, height = 500, res =120)
+par(mfrow = c(1,2))
+plot(dat$Toyota, dat$GM, xlab = "Toyota weekly log-return", ylab = "GM weekly log-return",
+     main = "GM vs Toyota", pch = 20, col = rgb(0,0,0,0.4))
+abline(lm(GM ~ Toyota, data = dat), col = "red", lwd = 2)
+plot(dat$Ford, dat$GM, xlab = "Ford weekly log-return", ylab = "GM weekly log-return",
+     main = "GM vs Ford", pch = 20, col = rgb(0,0,0,0.4))
+abline(lm(GM ~ Ford, data = dat), col = "red", lwd = 2)
+dev.off()
+
+cat("\nDone.\n")
+
+
+```
+
